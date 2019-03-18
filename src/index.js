@@ -91,9 +91,12 @@ const styles = {
 
   buttonText: {
     fontSize: 50,
-    color: '#007aff'
+    color: '#007aff',
+    fontFamily: 'Arial'
   }
 }
+
+const window = Dimensions.get('window')
 
 // missing `module.exports = exports['default'];` with babel6
 // export default React.createClass({
@@ -212,54 +215,87 @@ export default class extends Component {
   }
 
   initState (props, updateIndex = false) {
-    // set the current state
-    const state = this.state || { width: 0, height: 0, offset: { x: 0, y: 0 } }
-
+    // new state
     const initState = {
       autoplayEnd: false,
       loopJump: false,
-      offset: {}
+      offset: {x: 0, y: 0}
     }
+
+    //-----------------------------------------------------
+    // set total (new number of children)
+    //-----------------------------------------------------
 
     initState.total = props.children ? props.children.length || 1 : 0
 
-    if (state.total === initState.total && !updateIndex) {
+    //-----------------------------------------------------
+    // set index (its values are 0..total-1)
+    //-----------------------------------------------------
+
+    if (this.state && this.state.total === initState.total && !updateIndex) {
       // retain the index
-      initState.index = state.index
+      initState.index = this.state.index
     } else {
-      initState.index = initState.total > 1 ? Math.min(props.index, initState.total - 1) : 0
+      // correct index in case some children were removed
+      initState.index = initState.total > 1
+        ? Math.min(props.index, initState.total - 1)
+        : 0
     }
 
-    // Default: horizontal
-    const { width, height } = Dimensions.get('window')
+    //-----------------------------------------------------
+    // set direction
+    //-----------------------------------------------------
 
     initState.dir = props.horizontal === false ? 'y' : 'x'
 
+    //-----------------------------------------------------
+    // set width
+    //-----------------------------------------------------
+
     if (props.width) {
       initState.width = props.width
-    } else if (this.state && this.state.width){
+    } else if (this.state && this.state.width) {
       initState.width = this.state.width
     } else {
-      initState.width = width;
+      initState.width = window.width
     }
+
+    //-----------------------------------------------------
+    // set height
+    //-----------------------------------------------------
 
     if (props.height) {
       initState.height = props.height
-    } else if (this.state && this.state.height){
+    } else if (this.state && this.state.height) {
       initState.height = this.state.height
     } else {
-      initState.height = height;
+      initState.height = window.height
     }
 
-    initState.offset[initState.dir] = initState.dir === 'y'
-      ? height * props.index
-      : width * props.index
+    //-----------------------------------------------------
+    // set offset
+    //-----------------------------------------------------
 
+    const loopIndex = this.props.loop
+      ? initState.index + 1
+      : initState.index
+
+    if (initState.dir === 'x') {
+      initState.offset.x = initState.width * loopIndex
+    } else {
+      initState.offset.y = initState.height * loopIndex
+    }
+
+    //-----------------------------------------------------
+    // set internals
+    //-----------------------------------------------------
 
     this.internals = {
       ...this.internals,
+      offset: initState.offset,
       isScrolling: false
     };
+
     return initState
   }
 
@@ -269,9 +305,9 @@ export default class extends Component {
   }
 
   onLayout = (event) => {
-    const { width, height } = event.nativeEvent.layout
+    const {width, height} = event.nativeEvent.layout
     const offset = this.internals.offset = {}
-    const state = { width, height }
+    const state = {width, height}
 
     if (this.state.total > 1) {
       let setup = this.state.index
@@ -392,12 +428,9 @@ export default class extends Component {
    * @param  {string} dir    'x' || 'y'
    */
   updateIndex = (offset, dir, cb) => {
-    const state = this.state
-    let index = state.index
-    if (!this.internals.offset)   // Android not setting this onLayout first? https://github.com/leecade/react-native-swiper/issues/582
-      this.internals.offset = {}
+    let index = this.state.index
     const diff = offset[dir] - this.internals.offset[dir]
-    const step = dir === 'x' ? state.width : state.height
+    const step = dir === 'x' ? this.state.width : this.state.height
     let loopJump = false
 
     // Do nothing if offset no change.
@@ -410,10 +443,10 @@ export default class extends Component {
 
     if (this.props.loop) {
       if (index <= -1) {
-        index = state.total - 1
-        offset[dir] = step * state.total
+        index = this.state.total - 1
+        offset[dir] = step * this.state.total
         loopJump = true
-      } else if (index >= state.total) {
+      } else if (index >= this.state.total) {
         index = 0
         offset[dir] = step
         loopJump = true
@@ -621,17 +654,6 @@ export default class extends Component {
     this.scrollView = view;
   }
 
-  onPageScrollStateChanged = state => {
-    switch (state) {
-      case 'dragging':
-        return this.onScrollBegin();
-
-      case 'idle':
-      case 'settling':
-        if (this.props.onTouchEnd) this.props.onTouchEnd();
-    }
-  }
-
   renderScrollView = pages => {
     if (Platform.OS === 'ios') {
       return (
@@ -652,7 +674,6 @@ export default class extends Component {
       <ViewPagerAndroid ref={this.refScrollView}
         {...this.props}
         initialPage={this.props.loop ? this.state.index + 1 : this.state.index}
-        onPageScrollStateChanged={this.onPageScrollStateChanged}
         onPageSelected={this.onScrollEnd}
         key={pages.length}
         style={[styles.wrapperAndroid, this.props.style]}>
